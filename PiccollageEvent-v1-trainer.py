@@ -1,12 +1,14 @@
 # coding=utf-8
 """
 Version: 1.0
-Description: Use MSE and linear regression to estimate when is most likely the
-             user will open the application.
+Description: Use MSE and linear regression with hypothesis
+
+                h(x) = w0*x0 + w1*sin(w2 + w3*x1), where x0=1, w3=0.25
+
+             to estimate when is most likely the user will open the application.
 """
 import math
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
 
 ex = np.loadtxt('./data_examples/usage-of-piccollage-weekly-per-user-week1.csv',
@@ -16,10 +18,8 @@ ex = np.loadtxt('./data_examples/usage-of-piccollage-weekly-per-user-week1.csv',
 x_data = np.insert(ex[:, :-1], 0, 1, axis=1)
 y_data = ex[:, ex.shape[1] - 1:]
 
-# Construct the model.
-# w_data = np.random.rand(1, 3)
-# w_data = np.ones((1, 3), dtype=np.int)
-w_data = np.array([[0, 0]])
+# Construct the model. e.g. np.random.rand(...), np.ones((...), dtype=np.int)
+w_data = np.array([[0, 60, 0, 1.0 / 4]])
 
 print 'x_data=%s' % x_data
 print '----------'
@@ -35,9 +35,7 @@ def hFn(x, w):
     """
     The hypothesis is:
 
-        h(x) = w0 * x0 + w1 * (sin(x2) / x2), where x0 = 1.
-
-    Note: sin(x)/x is called "cardinal sine function" or "sinc function".
+        h(x) = w0 * x0 + w1 * sinc(w2 + w3 * x1)
 
     :param x: One dimension numpy.ndarray.
     :param w: One dimension numpy.ndarray.
@@ -46,9 +44,7 @@ def hFn(x, w):
     if not isinstance(x, np.ndarray) or \
         not isinstance(w, np.ndarray):
         raise TypeError('Should be type of numpy.ndarray!')
-    if len(x) != 2 or len(w) != 2:
-        raise ArithmeticError('The dimension does not match!')
-    ret = w[0] * x[0] + w[1] * np.sinc(x[1])
+    ret = w[0] * x[0] + w[1] * np.sin(w[2] + w[3] * x[1])
     return ret
 
 
@@ -56,7 +52,8 @@ def costfunction(x, y, w):
     """
     Calculate the mean squared error. The formular is:
 
-        J(w) = 1/m * sum(math.pow(h(x) - y))
+        J(w) = 1/(2 * m) * sum(math.pow(h(x) - y)), where m is the amount of
+        given examples.
 
     :param x: The x data.
     :param y: The y data.
@@ -83,48 +80,54 @@ def costfunction(x, y, w):
 def gradientDescent(x, y, w):
     """
     Do gradient descent for once in terms of the given x, y and w.
-    :param x:
-    :param y:
-    :param w:
-    :return:
+    :param x: The given x samples.
+    :param y: The given y samples.
+    :param w: The initial weights sample.
+    :return: The renew weights sample.
     """
-    alpha = 0.5
+    alpha = 0.001
     amount = len(y)
+    der_w = w.copy()
     w1 = w[0, 1]
     w2 = w[0, 2]
-    der_w = w[:]
+    w3 = w[0, 3]
 
     # Get ∇J(w)
     for m in range(amount):
         err = hFn(x[m], w[0]) - y[m]
         x0 = x[m, 0]
         x1 = x[m, 1]
-        # WORKAROUND: make them extremely small to 0.
+        some_val = w2 + w3 * x1
         der_w[0, 0] = err * x0
-        der_w[0, 1] = err * np.sin(w2 * x1) / x1
-        der_w[0, 2] = err * w1 * np.sin(w2 * x1)
+        der_w[0, 1] = err * np.sin(some_val)
+        der_w[0, 2] = err * np.cos(some_val) * w1
+        # der_w[0, 3] = err * np.cos(some_val) * w1 * x1
     der_w /= amount
 
     # J(w) := J(w) - alpha * ∇J(w)
-    # for i in range(3):
-    #     new_w[0, i] = w[0, i] - alpha * der_w[0, i]
     new_w = w - alpha * der_w
 
     return new_w
 
 
 # Start the iterations.
-print '> Before any training, the cost is %f' % costfunction(x_data, y_data,
-                                                             w_data)
-for i in range(10):
+cost1 = costfunction(x_data, y_data, w_data)
+for i in range(50000):
     new_w_data = gradientDescent(x_data, y_data, w_data)
-    print '#%d from %s to %s' % (i, w_data, new_w_data)
+    print '#%d weights from %s to %s' % (i, w_data, new_w_data)
     w_data = new_w_data
     # Break the loop for specific condition either like already converge or
     # diverge.
-print '> After any training, the cost is %f' % costfunction(x_data, y_data,
-                                                            w_data)
+print '> Before training, the cost is %f' % cost1
+print '> After training, the cost is %f' % costfunction(x_data, y_data, w_data)
 
-# Plot the result.
-# plt.plot(x_data[:, 1], y_data[:, 0], 'r+')
-# plt.show()
+# Plot the original training data.
+plt.xlabel('timestamp in a week')
+plt.ylabel('minutes in a hour')
+plt.plot(x_data[:, 1], y_data[:, 0], 'r+')
+# Plot the hypothesis.
+predict_x = np.linspace(0, 168, 1000)
+predict_y = w_data[0, 0] + w_data[0, 1] * np.sin(
+    w_data[0, 2] + w_data[0, 3] * predict_x)
+plt.plot(predict_x, predict_y)
+plt.show()
